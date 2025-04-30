@@ -1,103 +1,196 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState, useMemo } from "react";
+import api from "@/utils/api";
+import Link from "next/link";
+
+type Workout = {
+  _id: string;
+  workoutType: { _id: string; name: string };
+  number: number;
+  date: string;
+};
+
+const ITEMS_PER_PAGE = 5;
+
+export default function HomePage() {
+  const [allWorkouts, setAllWorkouts] = useState<Workout[]>([]);
+  const [filterType, setFilterType] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Fetch workouts when filterDate changes
+  useEffect(() => {
+    const fetchWorkouts = async () => {
+      setLoading(true);
+      try {
+        const dateParam = filterDate || new Date().toISOString().slice(0, 10);
+        const res = await api.get(`/workouts?date=${dateParam}`);
+        setAllWorkouts(res.data);
+      } catch (error) {
+        console.error("Failed to fetch workouts", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchWorkouts();
+  }, [filterDate]);
+
+  // Workout types for filter dropdown
+  const workoutTypes = useMemo(() => {
+    const seen = new Set();
+    return allWorkouts
+      .map((w) => w.workoutType)
+      .filter((type) => {
+        if (!seen.has(type._id)) {
+          seen.add(type._id);
+          return true;
+        }
+        return false;
+      });
+  }, [allWorkouts]);
+
+  // Filter by workout type (date already filtered from API)
+  const filteredWorkouts = allWorkouts.filter((w) => {
+    return filterType ? w.workoutType._id === filterType : true;
+  });
+
+  const totalPages = Math.ceil(filteredWorkouts.length / ITEMS_PER_PAGE);
+  const paginated = filteredWorkouts.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  const resetFilters = () => {
+    setFilterType("");
+    setFilterDate(""); // triggers fetch for today
+    setCurrentPage(1);
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="flex flex-col items-center justify-start min-h-[calc(100vh-4rem)] w-full px-4">
+      <h1 className="text-2xl font-bold mb-4">Today’s Workout</h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <Link href="/workouts/add" className="text-blue-600 underline mb-4">
+        + Add Workout
+      </Link>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4 mb-4 w-full max-w-3xl">
+        <select
+          value={filterType}
+          onChange={(e) => {
+            setFilterType(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="border p-2 rounded w-full sm:w-auto"
+        >
+          <option value="">All Types</option>
+          {workoutTypes.map((type) => (
+            <option key={type._id} value={type._id}>
+              {type.name}
+            </option>
+          ))}
+        </select>
+
+        <input
+          type="date"
+          value={filterDate}
+          onChange={(e) => {
+            setFilterDate(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="border p-2 rounded w-full sm:w-auto"
+        />
+
+        <button
+          onClick={resetFilters}
+          className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+        >
+          Reset
+        </button>
+      </div>
+
+      {loading ? (
+        <p>Loading...</p>
+      ) : paginated.length === 0 ? (
+        <p>No workouts match your filters.</p>
+      ) : (
+        <div className="w-full max-w-3xl overflow-x-auto">
+          <table className="min-w-full bg-white border border-gray-200 rounded shadow-sm">
+            <thead className="bg-gray-100 text-left">
+              <tr>
+                <th className="py-2 px-4 border-b">Workout</th>
+                <th className="py-2 px-4 border-b">Count</th>
+                <th className="py-2 px-4 border-b">Date</th>
+                <th className="py-2 px-4 border-b">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginated.map((workout) => (
+                <tr key={workout._id} className="hover:bg-gray-50">
+                  <td className="py-2 px-4 border-b font-medium">
+                    {workout.workoutType.name}
+                  </td>
+                  <td className="py-2 px-4 border-b">{workout.number}</td>
+                  <td className="py-2 px-4 border-b">
+                    {new Date(workout.date).toLocaleDateString(undefined, {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </td>
+                  <td className="py-2 px-4 border-b">
+                    <Link
+                      href={`/workouts/${workout._id}/edit`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      Edit
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex gap-2 mt-4">
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
+          >
+            Prev
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrentPage(i + 1)}
+              className={`px-3 py-1 rounded ${
+                currentPage === i + 1
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 hover:bg-gray-300"
+              }`}
+            >
+              {i + 1}
+            </button>
+          ))}
+          <button
+            onClick={() =>
+              setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+            }
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
